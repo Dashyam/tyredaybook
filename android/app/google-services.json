@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "248552041035",
+    "project_id": "madhok-b948c",
+    "storage_bucket": "madhok-b948c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:248552041035:android:d35d40ef7a149289cbbbce",
+        "android_client_info": {
+          "package_name": "com.example.tyre_daybook"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDjjHtnc75Q68o7LP-8ifEVUv0bwlAduXw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
