@@ -1,5 +1,6 @@
 class Entry {
   final String id;
+  final String uid; // NEW: user/shop ID
   final String type;
   final String brand;
   final String size;
@@ -11,6 +12,7 @@ class Entry {
 
   Entry({
     required this.id,
+    required this.uid,
     required this.type,
     required this.brand,
     required this.size,
@@ -24,6 +26,7 @@ class Entry {
   factory Entry.fromMap(String id, Map<String, dynamic> data) {
     return Entry(
       id: id,
+      uid: data['uid'] ?? '', // Safe fallback
       type: data['type'],
       brand: data['brand'],
       size: data['size'],
@@ -37,6 +40,7 @@ class Entry {
 
   Map<String, dynamic> toMap() {
     return {
+      'uid': uid, // Save uid for filtering
       'type': type,
       'brand': brand,
       'size': size,
@@ -49,10 +53,13 @@ class Entry {
   }
 
   bool matches(String query) {
-    return brand.toLowerCase().contains(query.toLowerCase()) ||
-        size.toLowerCase().contains(query.toLowerCase()) ||
-        model.toLowerCase().contains(query.toLowerCase()) ||
-        person.toLowerCase().contains(query.toLowerCase()) ||
-        date.contains(query);
+    final q = query.toLowerCase();
+    return brand.toLowerCase().contains(q) ||
+        size.toLowerCase().contains(q) ||
+        model.toLowerCase().contains(q) ||
+        person.toLowerCase().contains(q) ||
+        date.contains(query) ||
+        time.contains(query) ||
+        type.toLowerCase().contains(q);
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/entry.dart';
 
 class HistoryPage extends StatefulWidget {
@@ -11,8 +12,10 @@ class HistoryPage extends StatefulWidget {
 }
 
 class _HistoryPageState extends State<HistoryPage> {
-  List<Entry> allEntries = [];
   final _db = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+
+  List<Entry> allEntries = [];
   String searchQuery = '';
   String selectedDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
@@ -23,7 +26,14 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Future<void> _fetchAllEntries() async {
-    final snapshot = await _db.collection('tyre_entries').get();
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    final snapshot = await _db
+        .collection('tyre_entries')
+        .where('uid', isEqualTo: uid)
+        .get();
+
     final list = snapshot.docs.map((doc) => Entry.fromMap(doc.id, doc.data())).toList();
 
     setState(() {
@@ -33,9 +43,18 @@ class _HistoryPageState extends State<HistoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final keywords = searchQuery.toLowerCase().split(' ');
+
     final filtered = allEntries.where((entry) {
       final matchDate = entry.date == selectedDate;
-      final matchSearch = searchQuery.isEmpty || entry.matches(searchQuery);
+      final matchSearch = keywords.every((kw) =>
+          entry.brand.toLowerCase().contains(kw) ||
+          entry.size.toLowerCase().contains(kw) ||
+          entry.model.toLowerCase().contains(kw) ||
+          entry.person.toLowerCase().contains(kw) ||
+          entry.type.toLowerCase().contains(kw) ||
+          entry.date.contains(kw) ||
+          entry.time.contains(kw));
       return matchDate && matchSearch;
     }).toList();
 
@@ -78,7 +97,9 @@ class _HistoryPageState extends State<HistoryPage> {
               children: filtered.map((entry) {
                 return ListTile(
                   title: Text("${entry.brand} | ${entry.size} ${entry.model}"),
-                  subtitle: Text("${entry.person} | ${entry.type} | ${entry.date} ${entry.time} | Qty: ${entry.quantity}"),
+                  subtitle: Text(
+                    "${entry.person} | ${entry.type} | ${entry.date} ${entry.time} | Qty: ${entry.quantity}",
+                  ),
                 );
               }).toList(),
             ),
