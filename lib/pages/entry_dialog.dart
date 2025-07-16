@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart';
 
 import '../models/entry.dart';
 
@@ -70,7 +71,10 @@ class _EntryDialogState extends State<EntryDialog> {
       _brandSuggestions = (data['brand'] as List?)?.cast<String>() ?? [];
       _sizeSuggestions = (data['size'] as List?)?.cast<String>() ?? [];
       _modelSuggestions = (data['model'] as List?)?.cast<String>() ?? [];
-      _personSuggestions = (data[_type == 'IN' ? 'supplier' : 'buyer'] as List?)?.cast<String>() ?? [];
+      _personSuggestions =
+          (data[_type == 'IN' ? 'supplier' : 'buyer'] as List?)
+              ?.cast<String>() ??
+          [];
     });
   }
 
@@ -80,51 +84,39 @@ class _EntryDialogState extends State<EntryDialog> {
     if (uid == null) return;
 
     await _db.collection('user_suggestions').doc(uid).set({
-      field: FieldValue.arrayUnion([value.trim()])
+      field: FieldValue.arrayUnion([value.trim()]),
     }, SetOptions(merge: true));
   }
 
-  Widget _buildDropdownField({
+  Widget _buildTypeAheadField({
     required TextEditingController controller,
     required String label,
     required List<String> suggestions,
-    required String suggestionField,
   }) {
-    return StatefulBuilder(
-      builder: (context, setInnerState) {
-        return Focus(
-          onFocusChange: (hasFocus) {
-            if (hasFocus) {
-              setInnerState(() {}); // trigger suggestions
-            }
-          },
-          child: Autocomplete<String>(
-            optionsBuilder: (TextEditingValue textEditingValue) {
-              if (textEditingValue.text == '') {
-                return suggestions;
-              }
-              return suggestions.where((option) =>
-                  option.toLowerCase().contains(textEditingValue.text.toLowerCase()));
-            },
-            fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-              controller.addListener(() {
-                if (controller.text != textEditingController.text) {
-                  textEditingController.text = controller.text;
-                }
-              });
-              return TextFormField(
-                controller: controller,
-                focusNode: focusNode,
-                decoration: InputDecoration(labelText: label),
-                validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
-              );
-            },
-            onSelected: (String selection) {
-              controller.text = selection;
-            },
-          ),
+    return TypeAheadFormField<String>(
+      textFieldConfiguration: TextFieldConfiguration(
+        controller: controller,
+        decoration: InputDecoration(labelText: label),
+        onTap: () {
+          if (controller.text.isEmpty) {
+            controller.text = ''; // Trigger suggestions
+          }
+        },
+      ),
+      suggestionsCallback: (pattern) {
+        if (pattern.isEmpty) return suggestions;
+        return suggestions.where(
+          (item) => item.toLowerCase().contains(pattern.toLowerCase()),
         );
       },
+      itemBuilder: (context, String suggestion) {
+        return ListTile(title: Text(suggestion));
+      },
+      onSuggestionSelected: (String suggestion) {
+        controller.text = suggestion;
+      },
+      validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
+      noItemsFoundBuilder: (context) => const SizedBox(),
     );
   }
 
@@ -167,14 +159,16 @@ class _EntryDialogState extends State<EntryDialog> {
 
       if (!mounted) return;
 
-      Navigator.of(context).pop(); // Close dialog first
-      widget.onSaved(); // Refresh UI
+      Navigator.of(context).pop();
+      widget.onSaved();
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(widget.existingEntry == null
-              ? '✅ Tyre entry saved'
-              : '✅ Tyre entry updated'),
+          content: Text(
+            widget.existingEntry == null
+                ? '✅ Tyre entry saved'
+                : '✅ Tyre entry updated',
+          ),
           duration: const Duration(seconds: 2),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
@@ -194,7 +188,9 @@ class _EntryDialogState extends State<EntryDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.existingEntry == null ? 'New Tyre Entry' : 'Edit Tyre Entry'),
+      title: Text(
+        widget.existingEntry == null ? 'New Tyre Entry' : 'Edit Tyre Entry',
+      ),
       content: SingleChildScrollView(
         child: Form(
           key: _formKey,
@@ -210,33 +206,29 @@ class _EntryDialogState extends State<EntryDialog> {
                 onChanged: (val) {
                   setState(() {
                     _type = val!;
-                    _loadSuggestions(); // reload supplier/buyer suggestions
+                    _loadSuggestions();
                   });
                 },
               ),
-              _buildDropdownField(
+              _buildTypeAheadField(
                 controller: _personC,
                 label: _type == 'IN' ? 'Supplier' : 'Buyer',
                 suggestions: _personSuggestions,
-                suggestionField: _type == 'IN' ? 'supplier' : 'buyer',
               ),
-              _buildDropdownField(
+              _buildTypeAheadField(
                 controller: _brandC,
                 label: 'Brand',
                 suggestions: _brandSuggestions,
-                suggestionField: 'brand',
               ),
-              _buildDropdownField(
+              _buildTypeAheadField(
                 controller: _sizeC,
                 label: 'Size',
                 suggestions: _sizeSuggestions,
-                suggestionField: 'size',
               ),
-              _buildDropdownField(
+              _buildTypeAheadField(
                 controller: _modelC,
                 label: 'Model',
                 suggestions: _modelSuggestions,
-                suggestionField: 'model',
               ),
               TextFormField(
                 controller: _qtyC,
@@ -257,7 +249,8 @@ class _EntryDialogState extends State<EntryDialog> {
                         firstDate: DateTime(2023),
                         lastDate: DateTime(2100),
                       );
-                      if (picked != null) setState(() => _selectedDate = picked);
+                      if (picked != null)
+                        setState(() => _selectedDate = picked);
                     },
                     child: Text(DateFormat('dd-MM-yyyy').format(_selectedDate)),
                   ),
@@ -273,7 +266,10 @@ class _EntryDialogState extends State<EntryDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(onPressed: _save, child: const Text('Save')),
       ],
     );

@@ -1,4 +1,3 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -29,35 +28,49 @@ class _PaymentsHomePageState extends State<PaymentsHomePage> {
     final now = DateTime.now();
     fromDate = DateTime(now.year, now.month - 1, now.day);
     toDate = now;
+    final uid = _auth.currentUser?.uid;
+    print('👤 Current UID in initState: $uid');
     _listenToPayments();
   }
 
-  void _listenToPayments() {
+  void _listenToPayments() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
 
     Query query = _db.collection('payments').where('uid', isEqualTo: uid);
 
-    if (fromDate != null && toDate != null) {
-      final fromStr = DateFormat('yyyy-MM-dd').format(fromDate!);
-      final toStr = DateFormat('yyyy-MM-dd').format(toDate!);
-      query = query
-          .where('date', isGreaterThanOrEqualTo: fromStr)
-          .where('date', isLessThanOrEqualTo: toStr);
-    }
+    // Disable date filtering for now to ensure data comes
+    // Uncomment below only if date is stored in a comparable format
+    // if (fromDate != null && toDate != null) {
+    //   final fromStr = DateFormat('yyyy-MM-dd').format(fromDate!);
+    //   final toStr = DateFormat('yyyy-MM-dd').format(toDate!);
+    //   query = query
+    //       .where('date', isGreaterThanOrEqualTo: fromStr)
+    //       .where('date', isLessThanOrEqualTo: toStr);
+    // }
 
-    query.snapshots().listen((snapshot) {
-      List<PaymentEntry> all = snapshot.docs
-          .map(
-            (doc) => PaymentEntry.fromMap(
-              doc.id,
-              doc.data() as Map<String, dynamic>,
-            ),
-          )
+    try {
+      final snapshot = await query.get();
+      print('📦 Got ${snapshot.docs.length} docs');
+      final all = snapshot.docs
+          .map((doc) {
+            try {
+              return PaymentEntry.fromMap(
+                doc.id,
+                doc.data() as Map<String, dynamic>,
+              );
+            } catch (e) {
+              print('❌ Error parsing doc ${doc.id}: $e');
+              return null;
+            }
+          })
+          .whereType<PaymentEntry>()
           .toList();
 
       setState(() => allEntries = all);
-    });
+    } catch (e) {
+      print('❌ Error fetching payments: $e');
+    }
   }
 
   Future<void> _selectDate(bool isFrom) async {
@@ -95,11 +108,14 @@ class _PaymentsHomePageState extends State<PaymentsHomePage> {
     );
   }
 
-  void _goToPersonHistory(String person) {
+  void _goToPersonHistory(String person, String normalized) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => PersonPaymentHistoryPage(personName: person),
+        builder: (_) => PersonPaymentHistoryPage(
+          personName: person,
+          normalizedKey: normalized,
+        ),
       ),
     );
   }
@@ -125,6 +141,7 @@ class _PaymentsHomePageState extends State<PaymentsHomePage> {
     for (var group in filtered) {
       final entries = group.value;
       final name = entries.first.person;
+      final normalizedName = entries.first.normalizedName;
       final receive = entries
           .where((e) => e.type == 'to_receive')
           .fold(0, (sum, e) => sum + e.amount);
@@ -138,7 +155,7 @@ class _PaymentsHomePageState extends State<PaymentsHomePage> {
       final tile = ListTile(
         title: Text(name),
         subtitle: Text("Balance: ₹$balance  ${isSettled ? '(Settled)' : ''}"),
-        onTap: () => _goToPersonHistory(name),
+        onTap: () => _goToPersonHistory(name, normalizedName),
       );
 
       if (balance >= 0) {
@@ -159,7 +176,7 @@ class _PaymentsHomePageState extends State<PaymentsHomePage> {
               child: Column(
                 children: [
                   Text(
-                    "🟢 To Receive (₹$totalReceive)",
+                    "🟢 Payment (₹$totalReceive)",
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   const Divider(),
@@ -178,7 +195,7 @@ class _PaymentsHomePageState extends State<PaymentsHomePage> {
               child: Column(
                 children: [
                   Text(
-                    "🔴 To Pay (₹$totalPay)",
+                    "🔴 Receipt (₹$totalPay)",
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   const Divider(),
@@ -208,10 +225,6 @@ class _PaymentsHomePageState extends State<PaymentsHomePage> {
             icon: const Icon(Icons.directions_car),
             onPressed: _goToHome,
             tooltip: 'Go to Tyre Home Page',
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => _auth.signOut(),
           ),
         ],
       ),
