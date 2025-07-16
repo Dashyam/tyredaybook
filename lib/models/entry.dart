@@ -1,6 +1,6 @@
 class Entry {
   final String id;
-  final String uid; // NEW: user/shop ID
+  final String uid; 
   final String type;
   final String brand;
   final String size;

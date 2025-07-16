@@ -28,7 +28,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    print('✅ Logged-in User UID: ${_auth.currentUser?.uid}');
+    selectedDate = DateTime.now(); // Ensure today is selected
     _fetchEntries();
   }
 
@@ -43,7 +43,9 @@ class _HomePageState extends State<HomePage> {
     final fromStr = DateFormat('yyyy-MM-dd').format(from);
     final toStr = DateFormat('yyyy-MM-dd').format(to);
 
-    Query query = _db.collection('tyre_entries').where('uid', isEqualTo: currentUid);
+    Query query = _db
+        .collection('tyre_entries')
+        .where('uid', isEqualTo: currentUid);
 
     if (isRangeSelected) {
       query = query
@@ -62,16 +64,17 @@ class _HomePageState extends State<HomePage> {
       for (var doc in snapshot.docs) {
         final entry = Entry.fromMap(doc.id, doc.data() as Map<String, dynamic>);
 
-
         if (searchQuery.isEmpty ||
-            keywords.every((kw) =>
-                entry.brand.toLowerCase().contains(kw) ||
-                entry.model.toLowerCase().contains(kw) ||
-                entry.size.toLowerCase().contains(kw) ||
-                entry.person.toLowerCase().contains(kw) ||
-                entry.date.toLowerCase().contains(kw) ||
-                entry.time.toLowerCase().contains(kw) ||
-                entry.type.toLowerCase().contains(kw))) {
+            keywords.every(
+              (kw) =>
+                  entry.brand.toLowerCase().contains(kw) ||
+                  entry.model.toLowerCase().contains(kw) ||
+                  entry.size.toLowerCase().contains(kw) ||
+                  entry.person.toLowerCase().contains(kw) ||
+                  entry.date.toLowerCase().contains(kw) ||
+                  entry.time.toLowerCase().contains(kw) ||
+                  entry.type.toLowerCase().contains(kw),
+            )) {
           if (entry.type == 'IN') {
             inList.add(entry);
           } else {
@@ -80,17 +83,21 @@ class _HomePageState extends State<HomePage> {
         }
       }
 
-      setState(() {
-        inEntries = inList;
-        outEntries = outList;
-      });
+      if (mounted) {
+        setState(() {
+          inEntries = inList;
+          outEntries = outList;
+        });
+      }
     });
   }
 
   Future<void> _selectDateRange(bool isFrom) async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: isFrom ? (fromDate ?? selectedDate) : (toDate ?? selectedDate),
+      initialDate: isFrom
+          ? (fromDate ?? selectedDate)
+          : (toDate ?? selectedDate),
       firstDate: DateTime(2023),
       lastDate: DateTime.now(),
     );
@@ -151,8 +158,14 @@ class _HomePageState extends State<HomePage> {
         title: const Text("Confirm Logout"),
         content: const Text("Are you sure you want to logout?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Logout")),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Logout"),
+          ),
         ],
       ),
     );
@@ -179,16 +192,21 @@ class _HomePageState extends State<HomePage> {
               icon: const Icon(Icons.calendar_today),
               tooltip: "Pick a date",
               onPressed: _selectSingleDate,
-            )
+            ),
+            IconButton(
+              icon: const Icon(Icons.payments),
+              tooltip: "Go to Payments",
+              onPressed: () {
+                Navigator.pushNamed(context, '/payments');
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout),
+              onPressed: _confirmLogout,
+              tooltip: "Logout",
+            ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _confirmLogout,
-            tooltip: "Logout",
-          ),
-        ],
       ),
       drawer: Drawer(
         child: ListView(
@@ -196,14 +214,27 @@ class _HomePageState extends State<HomePage> {
             UserAccountsDrawerHeader(
               accountName: const Text("Logged in user"),
               accountEmail: Text(userEmail),
-              currentAccountPicture: const CircleAvatar(child: Icon(Icons.person)),
+              currentAccountPicture: const CircleAvatar(
+                child: Icon(Icons.person),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.assessment),
               title: const Text("Stock Report"),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const StockReportPage()));
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const StockReportPage()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.payments),
+              title: const Text("Payments"),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/payments');
               },
             ),
             ListTile(
@@ -215,7 +246,7 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showEntryDialog(),
+        onPressed: _showEntryDialog,
         child: const Icon(Icons.add),
         tooltip: "Add Tyre Entry",
       ),
@@ -224,7 +255,10 @@ class _HomePageState extends State<HomePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              TextButton(onPressed: () => _changeDay(-1), child: const Text("⬅️ Previous")),
+              TextButton(
+                onPressed: () => _changeDay(-1),
+                child: const Text("⬅️ Previous"),
+              ),
               TextButton(
                 onPressed: () {
                   setState(() {
@@ -236,7 +270,10 @@ class _HomePageState extends State<HomePage> {
                 },
                 child: const Text("📅 Today"),
               ),
-              TextButton(onPressed: () => _changeDay(1), child: const Text("➡️ Next")),
+              TextButton(
+                onPressed: () => _changeDay(1),
+                child: const Text("➡️ Next"),
+              ),
             ],
           ),
           Padding(
@@ -246,7 +283,9 @@ class _HomePageState extends State<HomePage> {
                 Expanded(
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.calendar_today),
-                    label: Text("From: ${fromDate != null ? DateFormat('dd MMM').format(fromDate!) : 'Select'}"),
+                    label: Text(
+                      "From: ${fromDate != null ? DateFormat('dd MMM').format(fromDate!) : 'Select'}",
+                    ),
                     onPressed: () => _selectDateRange(true),
                   ),
                 ),
@@ -254,7 +293,9 @@ class _HomePageState extends State<HomePage> {
                 Expanded(
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.calendar_month),
-                    label: Text("To: ${toDate != null ? DateFormat('dd MMM').format(toDate!) : 'Select'}"),
+                    label: Text(
+                      "To: ${toDate != null ? DateFormat('dd MMM').format(toDate!) : 'Select'}",
+                    ),
                     onPressed: () => _selectDateRange(false),
                   ),
                 ),
@@ -264,7 +305,10 @@ class _HomePageState extends State<HomePage> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12.0),
             child: TextField(
-              decoration: const InputDecoration(labelText: "Search by any field", prefixIcon: Icon(Icons.search)),
+              decoration: const InputDecoration(
+                labelText: "Search by any field",
+                prefixIcon: Icon(Icons.search),
+              ),
               onChanged: (value) {
                 setState(() => searchQuery = value.toLowerCase());
                 _fetchEntries();

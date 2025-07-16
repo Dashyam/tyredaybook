@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+
 import '../models/entry.dart';
 
 class EntryDialog extends StatefulWidget {
@@ -19,12 +20,18 @@ class _EntryDialogState extends State<EntryDialog> {
   final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
 
+  final _brandC = TextEditingController();
+  final _sizeC = TextEditingController();
+  final _modelC = TextEditingController();
+  final _personC = TextEditingController();
+  final _qtyC = TextEditingController();
+
+  List<String> _brandSuggestions = [];
+  List<String> _sizeSuggestions = [];
+  List<String> _modelSuggestions = [];
+  List<String> _personSuggestions = [];
+
   late String _type;
-  final TextEditingController _brandController = TextEditingController();
-  final TextEditingController _sizeController = TextEditingController();
-  final TextEditingController _modelController = TextEditingController();
-  final TextEditingController _personController = TextEditingController();
-  final TextEditingController _quantityController = TextEditingController();
   late DateTime _selectedDate;
   late String _time;
 
@@ -34,114 +41,154 @@ class _EntryDialogState extends State<EntryDialog> {
     final now = DateTime.now();
     _selectedDate = now;
     _time = DateFormat('HH:mm').format(now);
+    _type = widget.existingEntry?.type ?? 'IN';
 
     if (widget.existingEntry != null) {
       final e = widget.existingEntry!;
-      _type = e.type;
-      _brandController.text = e.brand;
-      _sizeController.text = e.size;
-      _modelController.text = e.model;
-      _personController.text = e.person;
-      _quantityController.text = e.quantity.toString();
+      _brandC.text = e.brand;
+      _sizeC.text = e.size;
+      _modelC.text = e.model;
+      _personC.text = e.person;
+      _qtyC.text = e.quantity.toString();
       _selectedDate = DateTime.tryParse(e.date) ?? now;
       _time = e.time;
     } else {
-      _type = 'IN';
-      _quantityController.text = '1';
+      _qtyC.text = '1';
     }
+
+    _loadSuggestions();
   }
 
-  Future<List<String>> _getSuggestions(String field) async {
+  Future<void> _loadSuggestions() async {
     final uid = _auth.currentUser?.uid;
-    if (uid == null) return [];
+    if (uid == null) return;
 
-    final snapshot = await _db
-        .collection('tyre_entries')
-        .where('uid', isEqualTo: uid)
-        .orderBy('date', descending: true)
-        .limit(100)
-        .get();
+    final doc = await _db.collection('user_suggestions').doc(uid).get();
+    final data = doc.data() ?? {};
 
-    final set = <String>{};
-    for (var doc in snapshot.docs) {
-      final value = doc.data()[field];
-      if (value != null && value is String) set.add(value);
-    }
-    return set.toList();
+    setState(() {
+      _brandSuggestions = (data['brand'] as List?)?.cast<String>() ?? [];
+      _sizeSuggestions = (data['size'] as List?)?.cast<String>() ?? [];
+      _modelSuggestions = (data['model'] as List?)?.cast<String>() ?? [];
+      _personSuggestions = (data[_type == 'IN' ? 'supplier' : 'buyer'] as List?)?.cast<String>() ?? [];
+    });
   }
 
- Widget _autoField(TextEditingController controller, String label, String field) {
-  return FutureBuilder<List<String>>(
-    future: _getSuggestions(field),
-    builder: (context, snapshot) {
-      final suggestions = snapshot.data ?? [];
+  Future<void> _addSuggestion(String field, String value) async {
+    if (value.trim().isEmpty) return;
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
 
-      return Autocomplete<String>(
-        optionsBuilder: (text) {
-          if (!snapshot.hasData) return const Iterable<String>.empty();
-          final input = text.text.toLowerCase();
-          return suggestions.where((e) => input.isEmpty || e.toLowerCase().contains(input));
-        },
-        onSelected: (val) => controller.text = val,
-        fieldViewBuilder: (context, tController, focusNode, onSubmit) {
-          tController.text = controller.text;
-          return TextFormField(
-            controller: tController,
-            focusNode: focusNode,
-            decoration: InputDecoration(labelText: label),
-            onChanged: (val) => controller.text = val,
-            validator: (val) => val == null || val.isEmpty ? 'Required' : null,
-          );
-        },
-      );
-    },
-  );
-}
+    await _db.collection('user_suggestions').doc(uid).set({
+      field: FieldValue.arrayUnion([value.trim()])
+    }, SetOptions(merge: true));
+  }
 
-
-  void _saveEntry() async {
-    if (_formKey.currentState!.validate()) {
-      final uid = _auth.currentUser!.uid;
-      final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
-      final data = {
-        'uid': uid,
-        'type': _type,
-        'brand': _brandController.text.trim(),
-        'size': _sizeController.text.trim(),
-        'model': _modelController.text.trim(),
-        'quantity': int.tryParse(_quantityController.text.trim()) ?? 1,
-        'date': dateStr,
-        'time': _time,
-        _type == 'IN' ? 'supplier' : 'buyer': _personController.text.trim(),
-      };
-
-      if (widget.existingEntry == null) {
-        await _db.collection('tyre_entries').add(data);
-      } else {
-        await _db.collection('tyre_entries').doc(widget.existingEntry!.id).update(data);
-      }
-
-      if (context.mounted) {
-        Navigator.of(context).pop();
-        widget.onSaved();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(widget.existingEntry == null ? 'Entry saved' : 'Entry updated'),
-            duration: const Duration(seconds: 2),
+  Widget _buildDropdownField({
+    required TextEditingController controller,
+    required String label,
+    required List<String> suggestions,
+    required String suggestionField,
+  }) {
+    return StatefulBuilder(
+      builder: (context, setInnerState) {
+        return Focus(
+          onFocusChange: (hasFocus) {
+            if (hasFocus) {
+              setInnerState(() {}); // trigger suggestions
+            }
+          },
+          child: Autocomplete<String>(
+            optionsBuilder: (TextEditingValue textEditingValue) {
+              if (textEditingValue.text == '') {
+                return suggestions;
+              }
+              return suggestions.where((option) =>
+                  option.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+            },
+            fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+              controller.addListener(() {
+                if (controller.text != textEditingController.text) {
+                  textEditingController.text = controller.text;
+                }
+              });
+              return TextFormField(
+                controller: controller,
+                focusNode: focusNode,
+                decoration: InputDecoration(labelText: label),
+                validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
+              );
+            },
+            onSelected: (String selection) {
+              controller.text = selection;
+            },
           ),
         );
-      }
-    }
+      },
+    );
   }
 
-  @override
-  void dispose() {
-    _brandController.dispose();
-    _sizeController.dispose();
-    _modelController.dispose();
-    _personController.dispose();
-    _quantityController.dispose();
-    super.dispose();
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+    final personField = _type == 'IN' ? 'supplier' : 'buyer';
+    final personValue = _personC.text.trim();
+
+    final data = {
+      'uid': uid,
+      'type': _type,
+      'brand': _brandC.text.trim(),
+      'size': _sizeC.text.trim(),
+      'model': _modelC.text.trim(),
+      'quantity': int.tryParse(_qtyC.text.trim()) ?? 1,
+      'date': dateStr,
+      'time': _time,
+      personField: personValue,
+    };
+
+    final col = _db.collection('tyre_entries');
+    try {
+      if (widget.existingEntry == null) {
+        await col.add(data);
+      } else {
+        await col.doc(widget.existingEntry!.id).update(data);
+      }
+
+      await Future.wait([
+        _addSuggestion('brand', _brandC.text),
+        _addSuggestion('size', _sizeC.text),
+        _addSuggestion('model', _modelC.text),
+        _addSuggestion(personField, personValue),
+      ]);
+
+      if (!mounted) return;
+
+      Navigator.of(context).pop(); // Close dialog first
+      widget.onSaved(); // Refresh UI
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(widget.existingEntry == null
+              ? '✅ Tyre entry saved'
+              : '✅ Tyre entry updated'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Failed to save entry: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -155,26 +202,52 @@ class _EntryDialogState extends State<EntryDialog> {
             children: [
               DropdownButtonFormField<String>(
                 value: _type,
-                items: ['IN', 'OUT'].map((type) {
-                  return DropdownMenuItem(value: type, child: Text(type));
-                }).toList(),
-                onChanged: (value) => setState(() => _type = value!),
                 decoration: const InputDecoration(labelText: 'Type'),
+                items: const [
+                  DropdownMenuItem(value: 'IN', child: Text('IN')),
+                  DropdownMenuItem(value: 'OUT', child: Text('OUT')),
+                ],
+                onChanged: (val) {
+                  setState(() {
+                    _type = val!;
+                    _loadSuggestions(); // reload supplier/buyer suggestions
+                  });
+                },
               ),
-              _autoField(_personController, _type == 'IN' ? 'Supplier' : 'Buyer', _type == 'IN' ? 'supplier' : 'buyer'),
-              _autoField(_brandController, 'Brand', 'brand'),
-              _autoField(_sizeController, 'Size', 'size'),
-              _autoField(_modelController, 'Model', 'model'),
+              _buildDropdownField(
+                controller: _personC,
+                label: _type == 'IN' ? 'Supplier' : 'Buyer',
+                suggestions: _personSuggestions,
+                suggestionField: _type == 'IN' ? 'supplier' : 'buyer',
+              ),
+              _buildDropdownField(
+                controller: _brandC,
+                label: 'Brand',
+                suggestions: _brandSuggestions,
+                suggestionField: 'brand',
+              ),
+              _buildDropdownField(
+                controller: _sizeC,
+                label: 'Size',
+                suggestions: _sizeSuggestions,
+                suggestionField: 'size',
+              ),
+              _buildDropdownField(
+                controller: _modelC,
+                label: 'Model',
+                suggestions: _modelSuggestions,
+                suggestionField: 'model',
+              ),
               TextFormField(
-                controller: _quantityController,
+                controller: _qtyC,
                 decoration: const InputDecoration(labelText: 'Quantity'),
                 keyboardType: TextInputType.number,
-                validator: (val) => val == null || val.isEmpty ? 'Required' : null,
+                validator: (v) => v == null || v.isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 10),
               Row(
                 children: [
-                  const Icon(Icons.calendar_today),
+                  const Icon(Icons.calendar_today, size: 20),
                   const SizedBox(width: 6),
                   TextButton(
                     onPressed: () async {
@@ -201,7 +274,7 @@ class _EntryDialogState extends State<EntryDialog> {
       ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        ElevatedButton(onPressed: _saveEntry, child: const Text('Save')),
+        ElevatedButton(onPressed: _save, child: const Text('Save')),
       ],
     );
   }
