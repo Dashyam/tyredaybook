@@ -27,6 +27,12 @@ class _EntryDialogState extends State<EntryDialog> {
   final _personC = TextEditingController();
   final _qtyC = TextEditingController();
 
+  final _personFocus = FocusNode();
+  final _brandFocus = FocusNode();
+  final _sizeFocus = FocusNode();
+  final _modelFocus = FocusNode();
+  final _qtyFocus = FocusNode();
+
   List<String> _brandSuggestions = [];
   List<String> _sizeSuggestions = [];
   List<String> _modelSuggestions = [];
@@ -58,6 +64,16 @@ class _EntryDialogState extends State<EntryDialog> {
     }
 
     _loadSuggestions();
+  }
+
+  @override
+  void dispose() {
+    _personFocus.dispose();
+    _brandFocus.dispose();
+    _sizeFocus.dispose();
+    _modelFocus.dispose();
+    _qtyFocus.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSuggestions() async {
@@ -92,10 +108,17 @@ class _EntryDialogState extends State<EntryDialog> {
     required TextEditingController controller,
     required String label,
     required List<String> suggestions,
+    FocusNode? focusNode,
+    FocusNode? nextFocusNode,
   }) {
     return TypeAheadFormField<String>(
       textFieldConfiguration: TextFieldConfiguration(
         controller: controller,
+        focusNode: focusNode,
+        textInputAction: TextInputAction.next,
+        onEditingComplete: () {
+          FocusScope.of(context).requestFocus(nextFocusNode);
+        },
         decoration: InputDecoration(labelText: label),
         onTap: () {
           if (controller.text.isEmpty) {
@@ -117,6 +140,13 @@ class _EntryDialogState extends State<EntryDialog> {
       },
       validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
       noItemsFoundBuilder: (context) => const SizedBox(),
+      suggestionsBoxDecoration: SuggestionsBoxDecoration(
+        elevation: 4,
+        constraints: BoxConstraints(maxHeight: 200),
+      ),
+      transitionBuilder: (context, suggestionsBox, controller) {
+        return Material(elevation: 4, child: suggestionsBox);
+      },
     );
   }
 
@@ -214,26 +244,36 @@ class _EntryDialogState extends State<EntryDialog> {
                 controller: _personC,
                 label: _type == 'IN' ? 'Supplier' : 'Buyer',
                 suggestions: _personSuggestions,
+                focusNode: _personFocus,
+                nextFocusNode: _brandFocus,
               ),
               _buildTypeAheadField(
                 controller: _brandC,
                 label: 'Brand',
                 suggestions: _brandSuggestions,
+                focusNode: _brandFocus,
+                nextFocusNode: _sizeFocus,
               ),
               _buildTypeAheadField(
                 controller: _sizeC,
                 label: 'Size',
                 suggestions: _sizeSuggestions,
+                focusNode: _sizeFocus,
+                nextFocusNode: _modelFocus,
               ),
               _buildTypeAheadField(
                 controller: _modelC,
                 label: 'Model',
                 suggestions: _modelSuggestions,
+                focusNode: _modelFocus,
+                nextFocusNode: _qtyFocus,
               ),
               TextFormField(
                 controller: _qtyC,
+                focusNode: _qtyFocus,
                 decoration: const InputDecoration(labelText: 'Quantity'),
                 keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.done,
                 validator: (v) => v == null || v.isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 10),

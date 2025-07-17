@@ -187,7 +187,7 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: Row(
           children: [
-            Expanded(child: Text('Tyre Daybook – $titleDate')),
+            Expanded(child: Text('Daybook – $titleDate')),
             IconButton(
               icon: const Icon(Icons.calendar_today),
               tooltip: "Pick a date",

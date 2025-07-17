@@ -161,7 +161,7 @@ class _PersonPaymentHistoryPageState extends State<PersonPaymentHistoryPage> {
                               Padding(
                                 padding: const EdgeInsets.all(8.0),
                                 child: Text(
-                                  DateFormat('dd MMM').format(
+                                  DateFormat('dd MMM yyyy').format(
                                     DateTime.tryParse(date) ?? DateTime.now(),
                                   ),
                                 ),
