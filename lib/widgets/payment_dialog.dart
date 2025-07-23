@@ -61,6 +61,19 @@ class _PaymentDialogState extends State<PaymentDialog> {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
 
+    final userDoc = await _db.collection('users').doc(uid).get();
+    final shopId = userDoc.data()?['shopId'] ?? '';
+
+    if (shopId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("❌ No shopId found for this user."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final now = TimeOfDay.now();
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
     final timeStr = now.format(context);
@@ -81,6 +94,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
     final entry = PaymentEntry(
       id: '',
       uid: uid,
+      shopId: shopId,
       person: typedName,
       normalizedName: normalized,
       amount: int.parse(_amountController.text.trim()),

@@ -1,6 +1,7 @@
 class Entry {
   final String id;
-  final String uid; 
+  final String uid;
+  final String shopId; // ✅ NEW
   final String type;
   final String brand;
   final String size;
@@ -13,6 +14,7 @@ class Entry {
   Entry({
     required this.id,
     required this.uid,
+    required this.shopId, // ✅ NEW
     required this.type,
     required this.brand,
     required this.size,
@@ -26,7 +28,8 @@ class Entry {
   factory Entry.fromMap(String id, Map<String, dynamic> data) {
     return Entry(
       id: id,
-      uid: data['uid'] ?? '', // Safe fallback
+      uid: data['uid'] ?? '',
+      shopId: data['shopId'] ?? '', // ✅ NEW fallback to empty if missing
       type: data['type'],
       brand: data['brand'],
       size: data['size'],
@@ -40,7 +43,8 @@ class Entry {
 
   Map<String, dynamic> toMap() {
     return {
-      'uid': uid, // Save uid for filtering
+      'uid': uid,
+      'shopId': shopId, // ✅ NEW
       'type': type,
       'brand': brand,
       'size': size,

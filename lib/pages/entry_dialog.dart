@@ -122,7 +122,7 @@ class _EntryDialogState extends State<EntryDialog> {
         decoration: InputDecoration(labelText: label),
         onTap: () {
           if (controller.text.isEmpty) {
-            controller.text = ''; // Trigger suggestions
+            controller.text = '';
           }
         },
       ),
@@ -156,23 +156,38 @@ class _EntryDialogState extends State<EntryDialog> {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
 
+    final userDoc = await _db.collection('users').doc(uid).get();
+    final shopId = userDoc.data()?['shopId'] ?? '';
+    if (shopId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ shopId not found for user')),
+      );
+      return;
+    }
+
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
     final personField = _type == 'IN' ? 'supplier' : 'buyer';
     final personValue = _personC.text.trim();
+    final quantity = int.tryParse(_qtyC.text.trim()) ?? 1;
+    final brand = _brandC.text.trim();
+    final size = _sizeC.text.trim();
+    final model = _modelC.text.trim();
 
     final data = {
       'uid': uid,
+      'shopId': shopId,
       'type': _type,
-      'brand': _brandC.text.trim(),
-      'size': _sizeC.text.trim(),
-      'model': _modelC.text.trim(),
-      'quantity': int.tryParse(_qtyC.text.trim()) ?? 1,
+      'brand': brand,
+      'size': size,
+      'model': model,
+      'quantity': quantity,
       'date': dateStr,
       'time': _time,
       personField: personValue,
     };
 
     final col = _db.collection('tyre_entries');
+
     try {
       if (widget.existingEntry == null) {
         await col.add(data);
@@ -181,14 +196,26 @@ class _EntryDialogState extends State<EntryDialog> {
       }
 
       await Future.wait([
-        _addSuggestion('brand', _brandC.text),
-        _addSuggestion('size', _sizeC.text),
-        _addSuggestion('model', _modelC.text),
+        _addSuggestion('brand', brand),
+        _addSuggestion('size', size),
+        _addSuggestion('model', model),
         _addSuggestion(personField, personValue),
       ]);
 
-      if (!mounted) return;
+      final safeSize = size.replaceAll('/', '_');
+      final docId = "$brand|$safeSize|$model";
+      final stockRef = _db.collection('stock_items').doc(docId);
 
+      await stockRef.set({
+        'brand': brand,
+        'size': size,
+        'model': model,
+        'uid': uid,
+        'shopId': shopId,
+        'quantity': FieldValue.increment(_type == 'IN' ? quantity : -quantity),
+      }, SetOptions(merge: true));
+
+      if (!mounted) return;
       Navigator.of(context).pop();
       widget.onSaved();
 

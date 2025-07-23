@@ -1,4 +1,6 @@
-import 'dart:html' as html;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -24,45 +26,159 @@ class _HomePageState extends State<HomePage> {
   List<Entry> inEntries = [];
   List<Entry> outEntries = [];
   String searchQuery = '';
+  String? userRole;
+  String? shopId;
 
   @override
   void initState() {
     super.initState();
-    selectedDate = DateTime.now(); // Ensure today is selected
-    _fetchEntries();
+    selectedDate = DateTime.now();
+    _fetchUser();
+  }
+
+  void _fetchUser() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    final doc = await _db.collection('users').doc(uid).get();
+    if (doc.exists) {
+      setState(() {
+        userRole = doc['role'];
+        shopId = doc['shopId'];
+      });
+      _fetchEntries();
+    }
+  }
+
+  Future<void> _generateAndDownloadPdf() async {
+    final pdf = pw.Document();
+
+    final dateTitle = fromDate != null && toDate != null
+        ? "From ${DateFormat('dd MMM yyyy').format(fromDate!)} to ${DateFormat('dd MMM yyyy').format(toDate!)}"
+        : DateFormat('EEEE, dd MMMM yyyy').format(selectedDate);
+
+    final totalIn = _getTotal(inEntries);
+    final totalOut = _getTotal(outEntries);
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return [
+            pw.Center(
+              child: pw.Text(
+                'Tyre Daybook Report',
+                style: pw.TextStyle(
+                  fontSize: 22,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+            pw.SizedBox(height: 8),
+            pw.Center(
+              child: pw.Text(dateTitle, style: pw.TextStyle(fontSize: 14)),
+            ),
+            pw.SizedBox(height: 16),
+            pw.Text(
+              'IN Entries (Total: $totalIn)',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 6),
+            _buildEntryTable(inEntries),
+            pw.SizedBox(height: 16),
+            pw.Text(
+              'OUT Entries (Total: $totalOut)',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 6),
+            _buildEntryTable(outEntries),
+          ];
+        },
+      ),
+    );
+
+    await Printing.sharePdf(
+      bytes: await pdf.save(),
+      filename: 'tyre_daybook_report.pdf',
+    );
+  }
+
+  pw.Widget _buildEntryTable(List<Entry> entries) {
+    if (entries.isEmpty) {
+      return pw.Text("No entries available.");
+    }
+
+    return pw.Table.fromTextArray(
+      headers: ['Brand', 'Size', 'Model', 'Qty', 'Person', 'Date', 'Time'],
+      data: entries.map((e) {
+        return [
+          e.brand.toUpperCase(),
+          e.size.toUpperCase(),
+          e.model.toUpperCase(),
+          e.quantity.toString(),
+          e.person.toUpperCase(),
+          e.date,
+          e.time,
+        ];
+      }).toList(),
+      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+      cellStyle: const pw.TextStyle(fontSize: 10),
+      cellAlignment: pw.Alignment.centerLeft,
+      columnWidths: {
+        0: const pw.FlexColumnWidth(2),
+        1: const pw.FlexColumnWidth(1),
+        2: const pw.FlexColumnWidth(2),
+        3: const pw.FlexColumnWidth(1),
+        4: const pw.FlexColumnWidth(2),
+        5: const pw.FlexColumnWidth(2),
+        6: const pw.FlexColumnWidth(1.5),
+      },
+      border: pw.TableBorder.all(width: 0.3),
+    );
   }
 
   void _fetchEntries() {
-    final currentUid = _auth.currentUser?.uid;
-    if (currentUid == null) return;
+    if (shopId == null || userRole == null) return;
 
     final isRangeSelected = fromDate != null && toDate != null;
-    final from = isRangeSelected ? fromDate! : selectedDate;
-    final to = isRangeSelected ? toDate! : selectedDate;
+    DateTime from, to;
+
+    if (isRangeSelected) {
+      from = fromDate!;
+      to = toDate!;
+    } else {
+      from = selectedDate;
+      to = selectedDate;
+    }
 
     final fromStr = DateFormat('yyyy-MM-dd').format(from);
     final toStr = DateFormat('yyyy-MM-dd').format(to);
 
+    print('📣 Fetching entries for role: $userRole');
+    print('🔍 shopId: $shopId');
+    print('📅 Date range: $fromStr to $toStr');
+
     Query query = _db
         .collection('tyre_entries')
-        .where('uid', isEqualTo: currentUid);
-
-    if (isRangeSelected) {
-      query = query
-          .where('date', isGreaterThanOrEqualTo: fromStr)
-          .where('date', isLessThanOrEqualTo: toStr);
-    } else {
-      query = query.where('date', isEqualTo: fromStr);
-    }
+        .where('shopId', isEqualTo: shopId)
+        .where('date', isGreaterThanOrEqualTo: fromStr)
+        .where('date', isLessThanOrEqualTo: toStr);
 
     query.snapshots().listen((snapshot) {
+      print(
+        '📦 Total documents fetched from Firestore: ${snapshot.docs.length}',
+      );
+
       List<Entry> inList = [];
       List<Entry> outList = [];
 
       final keywords = searchQuery.toLowerCase().split(' ');
 
       for (var doc in snapshot.docs) {
-        final entry = Entry.fromMap(doc.id, doc.data() as Map<String, dynamic>);
+        final data = doc.data() as Map<String, dynamic>;
+        print('🧾 Entry: ${data['brand']} - Date: ${data['date']}');
+
+        final entry = Entry.fromMap(doc.id, data);
 
         if (searchQuery.isEmpty ||
             keywords.every(
@@ -93,6 +209,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _selectDateRange(bool isFrom) async {
+    if (userRole == 'manager') return;
+
     final picked = await showDatePicker(
       context: context,
       initialDate: isFrom
@@ -121,6 +239,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _selectSingleDate() async {
+    if (userRole == 'manager') return;
+
     final picked = await showDatePicker(
       context: context,
       initialDate: selectedDate,
@@ -139,8 +259,17 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _changeDay(int days) {
+    final newDate = selectedDate.add(Duration(days: days));
+
+    if (userRole == 'manager') {
+      final today = DateTime.now();
+      final earliest = today.subtract(const Duration(days: 6));
+
+      if (newDate.isBefore(earliest) || newDate.isAfter(today)) return;
+    }
+
     setState(() {
-      selectedDate = selectedDate.add(Duration(days: days));
+      selectedDate = newDate;
       fromDate = null;
       toDate = null;
     });
@@ -169,7 +298,6 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-
     if (result == true) {
       await _auth.signOut();
     }
@@ -188,18 +316,26 @@ class _HomePageState extends State<HomePage> {
         title: Row(
           children: [
             Expanded(child: Text('Daybook – $titleDate')),
+            if (userRole != 'manager')
+              IconButton(
+                icon: const Icon(Icons.calendar_today),
+                tooltip: "Pick a date",
+                onPressed: _selectSingleDate,
+              ),
+            if (userRole != 'manager')
+              IconButton(
+                icon: const Icon(Icons.payments),
+                tooltip: "Go to Payments",
+                onPressed: () {
+                  Navigator.pushNamed(context, '/payments');
+                },
+              ),
             IconButton(
-              icon: const Icon(Icons.calendar_today),
-              tooltip: "Pick a date",
-              onPressed: _selectSingleDate,
+              icon: const Icon(Icons.download),
+              tooltip: "Download PDF",
+              onPressed: _generateAndDownloadPdf,
             ),
-            IconButton(
-              icon: const Icon(Icons.payments),
-              tooltip: "Go to Payments",
-              onPressed: () {
-                Navigator.pushNamed(context, '/payments');
-              },
-            ),
+
             IconButton(
               icon: const Icon(Icons.logout),
               onPressed: _confirmLogout,
@@ -218,25 +354,27 @@ class _HomePageState extends State<HomePage> {
                 child: Icon(Icons.person),
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.assessment),
-              title: const Text("Stock Report"),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const StockReportPage()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.payments),
-              title: const Text("Payments"),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/payments');
-              },
-            ),
+            if (userRole != 'manager')
+              ListTile(
+                leading: const Icon(Icons.assessment),
+                title: const Text("Stock Report"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const StockReportPage()),
+                  );
+                },
+              ),
+            if (userRole != 'manager')
+              ListTile(
+                leading: const Icon(Icons.payments),
+                title: const Text("Payments"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/payments');
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text("Logout"),
@@ -245,10 +383,17 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showEntryDialog,
-        child: const Icon(Icons.add),
-        tooltip: "Add Tyre Entry",
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            onPressed: _showEntryDialog,
+            child: const Icon(Icons.add),
+            tooltip: "Add Tyre Entry",
+            heroTag: "add_button",
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -276,32 +421,33 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.calendar_today),
-                    label: Text(
-                      "From: ${fromDate != null ? DateFormat('dd MMM').format(fromDate!) : 'Select'}",
+          if (userRole != 'manager')
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.calendar_today),
+                      label: Text(
+                        "From: ${fromDate != null ? DateFormat('dd MMM').format(fromDate!) : 'Select'}",
+                      ),
+                      onPressed: () => _selectDateRange(true),
                     ),
-                    onPressed: () => _selectDateRange(true),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.calendar_month),
-                    label: Text(
-                      "To: ${toDate != null ? DateFormat('dd MMM').format(toDate!) : 'Select'}",
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.calendar_month),
+                      label: Text(
+                        "To: ${toDate != null ? DateFormat('dd MMM').format(toDate!) : 'Select'}",
+                      ),
+                      onPressed: () => _selectDateRange(false),
                     ),
-                    onPressed: () => _selectDateRange(false),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12.0),
             child: TextField(

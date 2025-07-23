@@ -1,7 +1,7 @@
-
 class PaymentEntry {
   final String id;
   final String uid;
+  final String shopId; // ✅ NEW
   final String person;
   final String normalizedName;
   final int amount;
@@ -14,6 +14,7 @@ class PaymentEntry {
   PaymentEntry({
     required this.id,
     required this.uid,
+    required this.shopId, // ✅ NEW
     required this.person,
     required this.normalizedName,
     required this.amount,
@@ -28,6 +29,7 @@ class PaymentEntry {
     return PaymentEntry(
       id: id,
       uid: data['uid'] ?? '',
+      shopId: data['shopId'] ?? '', // ✅ fallback to empty if not present
       person: data['person'] ?? '',
       normalizedName: data['normalizedName'] ?? '',
       amount: data['amount'] ?? 0,
@@ -42,6 +44,7 @@ class PaymentEntry {
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
+      'shopId': shopId, // ✅ NEW
       'person': person,
       'normalizedName': normalizedName,
       'amount': amount,
@@ -56,6 +59,7 @@ class PaymentEntry {
   PaymentEntry copyWith({
     String? id,
     String? uid,
+    String? shopId,
     String? person,
     String? normalizedName,
     int? amount,
@@ -68,6 +72,7 @@ class PaymentEntry {
     return PaymentEntry(
       id: id ?? this.id,
       uid: uid ?? this.uid,
+      shopId: shopId ?? this.shopId, // ✅ NEW
       person: person ?? this.person,
       normalizedName: normalizedName ?? this.normalizedName,
       amount: amount ?? this.amount,
