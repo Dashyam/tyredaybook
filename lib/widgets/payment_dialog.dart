@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/payment_entry.dart';
 import '../utils/normalized_name_util.dart';
 

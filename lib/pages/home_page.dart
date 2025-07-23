@@ -1,11 +1,15 @@
-import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:tyre_daybook/pages/download_page.dart';
 import 'entry_dialog.dart';
 import 'stock_report_page.dart';
 import 'package:tyre_daybook/models/entry.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:universal_html/html.dart' as html;
+import 'dart:typed_data';
+
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -175,6 +179,64 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+
+Future<void> _downloadPdf() async {
+  final pdf = pw.Document();
+
+  pdf.addPage(
+    pw.MultiPage(
+      build: (context) => [
+        pw.Text("Tyre Daybook Report",
+            style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 10),
+        if (fromDate != null && toDate != null)
+          pw.Text("From: ${DateFormat('dd MMM yyyy').format(fromDate!)} to ${DateFormat('dd MMM yyyy').format(toDate!)}")
+        else
+          pw.Text("Date: ${DateFormat('dd MMM yyyy').format(selectedDate)}"),
+        pw.SizedBox(height: 10),
+        pw.Text("Search: $searchQuery"),
+        pw.SizedBox(height: 20),
+        pw.Text("🟢 IN Entries", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+        _buildEntryTable(inEntries),
+        pw.SizedBox(height: 20),
+        pw.Text("🔴 OUT Entries", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+        _buildEntryTable(outEntries),
+      ],
+    ),
+  );
+
+  // Convert PDF to bytes
+  Uint8List bytes = await pdf.save();
+
+  // Trigger download in browser
+  final blob = html.Blob([bytes]);
+  final url = html.Url.createObjectUrlFromBlob(blob);
+  final anchor = html.AnchorElement(href: url)
+    ..setAttribute("download", "tyre_report.pdf")
+    ..click();
+  html.Url.revokeObjectUrl(url);
+}
+
+pw.Widget _buildEntryTable(List<Entry> entries) {
+  return entries.isEmpty
+      ? pw.Text("No entries")
+      : pw.Table.fromTextArray(
+          headers: ['Brand', 'Model', 'Size', 'Qty', 'Person', 'Date', 'Time'],
+          data: entries.map((e) {
+            return [
+              e.brand,
+              e.model,
+              e.size,
+              e.quantity.toString(),
+              e.person,
+              e.date,
+              e.time,
+            ];
+          }).toList(),
+        );
+}
+
+
   @override
   Widget build(BuildContext context) {
     final userEmail = _auth.currentUser?.email ?? 'No user';
@@ -205,6 +267,9 @@ class _HomePageState extends State<HomePage> {
               onPressed: _confirmLogout,
               tooltip: "Logout",
             ),
+            IconButton(
+              onPressed: _downloadPdf, 
+              icon: const Icon(Icons.download_rounded))
           ],
         ),
       ),
